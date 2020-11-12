@@ -17,23 +17,22 @@ app.use(bodyParser.json());
 // GET ALL POSTS
 app.get('/posts', async (req, res, next) => {
     try {
-        const { min, max } = req.body;
-        const allUserPosts = await pool.query('SELECT * FROM user_posts');
-        const result = allUserPosts.rows.slice(Number(min-1), Number(max));
-        res.json(result);
+        const { page, perPage } = req.body;
+        const allUserPosts = await pool.query(`SELECT * FROM user_posts LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`);
+        res.json(allUserPosts.rows);
     } catch {
         res.status(500).send();
     }
 })
 
 // CREATE POST
-app.post('/post', authenticateToken, async (req, res, next) => {
+app.post('/posts', authenticateToken, async (req, res, next) => {
     try {
         const { title, content } = req.body;
-        const joined = new Date();
+        const publishedDate = new Date();
         const newPost = await pool.query(
             'INSERT INTO user_posts (title, content, published_date, user_id) VALUES ($1, $2, $3, $4) RETURNING *',
-            ([title, content, joined, req.user.id])
+            ([title, content, publishedDate, req.user.id])
         );
         res.json(newPost.rows[0]);
     } catch {
@@ -41,8 +40,21 @@ app.post('/post', authenticateToken, async (req, res, next) => {
     }
 })
 
+// GET DAILY POST STATS
+app.get('/posts/stats', async (req, res, next) => {
+    try {
+        const { date } = req.body;
+        const result = await pool.query('SELECT COUNT(*) as count FROM user_posts WHERE published_date = $1', [date]);
+        const count = result.rows[0].count;
+        res.json({ result: count });
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+     }
+})
+
 // UPDATE POST
-app.put('/post/:id', authenticateToken, async (req, res, next) => {
+app.put('/posts/:id', authenticateToken, async (req, res, next) => {
     try {
         const { id } = req.params;
         const { title, content } = req.body;
@@ -57,14 +69,14 @@ app.put('/post/:id', authenticateToken, async (req, res, next) => {
             'UPDATE user_posts SET title = $1, content = $2 WHERE id = $3',
             [title, content, id]
         );
-        res.json('post was updated');
+        res.send('post was updated');
     } catch {
         res.status(500).send();
     }
 })
 
 // GET POST
-app.get('/post/:id', async (req, res, next) => {
+app.get('/posts/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
         const post = await pool.query('SELECT * FROM user_posts WHERE id = $1', [id]);
@@ -75,24 +87,24 @@ app.get('/post/:id', async (req, res, next) => {
 })
 
 // DELETE POST
-app.delete('/post/:id', authenticateToken, async (req, res, next) => {
+app.delete('/posts/:id', authenticateToken, async (req, res, next) => {
     try {
         const { id } = req.params;
-        const targetPost = await pool.query(
-            'SELECT * FROM user_posts WHERE user_id = $1 AND id = $2',
-            [req.user.id, id]
+        const { rows } = await pool.query(
+            'DELETE FROM user_posts WHERE id = $1 RETURNING *;', [id]
         );
-        if (targetPost.rows.length === 0) {
-            return res.status(404).send('post is not found');
+        if (rows.length === 0) {
+            res.sendStatus(404);
+        } else {
+            res.sendStatus(204);
         }
-        const deletePost = await pool.query(
-            'DELETE FROM user_posts WHERE id = $1', [id]
-        );
-        res.json('post was deleted');
+        res.send('post was deleted');
     } catch {
         res.status(500).send();
     }
 })
+
+
 
 // GET POST BY USER ID
 app.get('/user/posts/:id', authenticateToken, async (req, res, next) => {
@@ -105,26 +117,16 @@ app.get('/user/posts/:id', authenticateToken, async (req, res, next) => {
     }
 })
 
-// GET DAILY POST STATS
-app.get('/posts/stats', async (req, res, next) => {
-    try {
-        const { date } = req.body;
-        const dailyPosts = await pool.query('SELECT * FROM user_posts WHERE published_date = $1', [date]);
-        res.json(`Amount of posts for your chosed date is ${dailyPosts.rows.length}`);
-    } catch {
-        res.status(500).send(); 
-    }
-})
 
 // REGISTER NEW USER
 app.post('/register', async (req, res, next) => {
     try {
         const { email, password } = req.body;
         if (!emailValidation(email)) {
-            return res.json('Email is invalid');
+            return res.status(422).send('Email is invalid');
         }
         if (!passwordValidation(password)) {
-            return res.json('Password is invalid');
+            return res.status(422).send('Password is invalid');
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = await pool.query(
@@ -175,15 +177,10 @@ app.put('/user', authenticateToken, async (req, res, next) => {
 app.get('/search', async (req, res, next) => {
     try {
         const { searchString } = req.body;
-        const lowerCaseSearchString = searchString.toLowerCase();
-        const postsArray = await pool.query('SELECT * FROM user_posts');
-        let resultList = [];
-        for (const item of postsArray.rows) {
-            if (item.title.toLowerCase().includes(lowerCaseSearchString) || item.content.toLowerCase().includes(lowerCaseSearchString)) {
-                resultList.push(item);
-            }
-        }
-        res.json(resultList);
+        const { rows } = await pool.query(
+            `SELECT * FROM user_posts WHERE title ILIKE $1 OR content ILIKE $1`, [`%${searchString}%`]
+        );
+        res.json(rows);
     } catch {
         res.status(500).send();
     }
