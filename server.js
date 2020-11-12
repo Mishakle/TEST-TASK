@@ -17,11 +17,27 @@ app.use(bodyParser.json());
 // GET ALL POSTS
 app.get('/posts', async (req, res, next) => {
     try {
-        const { page, perPage } = req.body;
-        const allUserPosts = await pool.query(`SELECT * FROM user_posts LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`);
+        const page = Number(req.query.page);
+        let perPage = Number(req.query.per_page);
+        if (!page) {
+            page = 1;
+        }
+        if (!perPage) {
+            perPage = 25;
+        }
+        if (!Number.isInteger(page) || page < 1) {
+            return res.status(422).send('"page" must be a positive integer');
+        }
+        if (!Number.isInteger(perPage) || perPage < 1) {
+            return res.status(422).send('"perPage" must be a positive integer');
+        }
+        const allUserPosts = await pool.query(`
+            SELECT * FROM user_posts LIMIT ${perPage} OFFSET ${(page - 1) * perPage};
+        `);
         res.json(allUserPosts.rows);
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -35,8 +51,9 @@ app.post('/posts', authenticateToken, async (req, res, next) => {
             ([title, content, publishedDate, req.user.id])
         );
         res.json(newPost.rows[0]);
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -58,20 +75,17 @@ app.put('/posts/:id', authenticateToken, async (req, res, next) => {
     try {
         const { id } = req.params;
         const { title, content } = req.body;
-        const targetPost = await pool.query(
-            'SELECT * FROM user_posts WHERE user_id = $1 AND id = $2',
-            [req.user.id, id]
+        const { rows } = await pool.query(`
+            UPDATE user_posts SET title = $1, content = $2 WHERE id = $3 AND user_id = $4 RETURNING *;`, 
+            [title, content, id, req.user.id]
         );
-        if (targetPost.rows.length === 0) {
-            return res.status(404).send('post is not found');
+        if (rows.length === 0) {
+            res.sendStatus(404);
         }
-        const updatePost = await pool.query(
-            'UPDATE user_posts SET title = $1, content = $2 WHERE id = $3',
-            [title, content, id]
-        );
         res.send('post was updated');
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -81,8 +95,9 @@ app.get('/posts/:id', async (req, res, next) => {
         const { id } = req.params;
         const post = await pool.query('SELECT * FROM user_posts WHERE id = $1', [id]);
         res.json(post.rows[0]);
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -91,16 +106,16 @@ app.delete('/posts/:id', authenticateToken, async (req, res, next) => {
     try {
         const { id } = req.params;
         const { rows } = await pool.query(
-            'DELETE FROM user_posts WHERE id = $1 RETURNING *;', [id]
+            'DELETE FROM user_posts WHERE id = $1 AND user_id = $2 RETURNING *;', [id, req.user.id]
         );
         if (rows.length === 0) {
             res.sendStatus(404);
         } else {
             res.sendStatus(204);
         }
-        res.send('post was deleted');
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -112,8 +127,9 @@ app.get('/user/posts/:id', authenticateToken, async (req, res, next) => {
         const { id } = req.params;
         const userPosts = await pool.query('SELECT * FROM user_posts WHERE user_id = $1', [id]);
         res.json(userPosts.rows);
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -129,13 +145,14 @@ app.post('/register', async (req, res, next) => {
             return res.status(422).send('Password is invalid');
         }
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = await pool.query(
+        await pool.query(
             'INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *',
             ([email, hashedPassword])
         );
         res.json('user was successfully added');
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -148,7 +165,7 @@ app.post('/login', async (req, res, next) => {
     try {
         if (await bcrypt.compare(password, user.rows[0].password)) {
             const accessToken = jwt.sign(user.rows[0], process.env.ACCESS_TOKEN_SECRET, { algorithm: 'HS256', expiresIn: '1200s'});
-            res.json({ accessToken: accessToken });
+            res.json({ accessToken });
         } else {
             // rewrite it according to standarts
             res.send('Email or password is incorrect');
@@ -163,13 +180,14 @@ app.put('/user', authenticateToken, async (req, res, next) => {
     try {
         const { email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = await pool.query(
+        await pool.query(
             'UPDATE users SET email = $1, password = $2 WHERE id = $3',
             [email, hashedPassword, req.user.id]
         );
         res.json('user information was updated');
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
@@ -181,8 +199,9 @@ app.get('/search', async (req, res, next) => {
             `SELECT * FROM user_posts WHERE title ILIKE $1 OR content ILIKE $1`, [`%${searchString}%`]
         );
         res.json(rows);
-    } catch {
-        res.status(500).send();
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
     }
 })
 
