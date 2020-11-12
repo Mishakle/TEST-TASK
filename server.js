@@ -8,7 +8,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const emailValidation = require('./validation/emailValidation.js');
 const passwordValidation = require('./validation/passwordValidation.js');
-const authenticateToken = require('./tokenMiddleware/tokenMiddleware.js');
+const authenticateToken = require('./authenticateToken/authenticateToken.js');
 
 app.use(bodyParser.json());
 
@@ -65,8 +65,8 @@ app.put('/post/:id', authenticateToken, async (req, res, next) => {
 
 // GET POST
 app.get('/post/:id', async (req, res, next) => {
-    const { id } = req.params;
     try {
+        const { id } = req.params;
         const post = await pool.query('SELECT * FROM user_posts WHERE id = $1', [id]);
         res.json(post.rows[0]);
     } catch {
@@ -183,18 +183,6 @@ app.get('/search', async (req, res, next) => {
         res.status(500).send();
     }
 })
-
-// function authenticateToken(req, res, next) {
-//     const authHeader = req.headers['authorization'];
-//     const token = authHeader && authHeader.split(' ')[1];
-//     if (!token) return res.sendStatus(401)
-
-//     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-//         if (err) return res.sendStatus(403)
-//         req.user = user;
-//         next();
-//     })
-// }
 
 app.listen(3000, () => {
     console.log('server is running on port 3000');
