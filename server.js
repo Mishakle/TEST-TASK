@@ -94,6 +94,7 @@ app.delete('/post/:id', authenticateToken, async (req, res, next) => {
     }
 })
 
+// GET POST BY USER ID
 app.get('/user/posts/:id', authenticateToken, async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -104,6 +105,7 @@ app.get('/user/posts/:id', authenticateToken, async (req, res, next) => {
     }
 })
 
+// GET DAILY POST STATS
 app.get('/posts/stats', async (req, res, next) => {
     try {
         const { date } = req.body;
@@ -114,6 +116,7 @@ app.get('/posts/stats', async (req, res, next) => {
     }
 })
 
+// REGISTER NEW USER
 app.post('/register', async (req, res, next) => {
     try {
         const { email, password } = req.body;
@@ -153,6 +156,7 @@ app.post('/login', async (req, res, next) => {
     }
 })
 
+// UPDATING USER PROFILE INFORMATION
 app.put('/user', authenticateToken, async (req, res, next) => {
     try {
         const { email, password } = req.body;
@@ -167,6 +171,7 @@ app.put('/user', authenticateToken, async (req, res, next) => {
     }
 })
 
+// SEACRH POSTS USING TITLE AND CONTENT
 app.get('/search', async (req, res, next) => {
     try {
         const { searchString } = req.body;
